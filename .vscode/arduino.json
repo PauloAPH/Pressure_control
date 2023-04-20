@@ -1,5 +1,5 @@
 {
     "board": "arduino:avr:uno",
-    "sketch": "SoftwareSerialExample.ino",
-    "port": "/dev/ttyACM1"
+    "sketch": "Arduino\\Uno\\Arduino_uno_test.ino",
+    "port": "COM9"
 }
