@@ -20,8 +20,8 @@
 #define ESC_C1_V1 2
 #define ESC_C1_V2 3
 
-#define ESC_C2_V1 8
-#define ESC_C2_V2 9
+#define ESC_C2_V1 11
+#define ESC_C2_V2 12
 
 #define ABS_C1_V1 7
 #define ABS_C1_V2 4
@@ -29,11 +29,11 @@
 #define ABS_C2_V1 6
 #define ABS_C2_V2 5
 
-#define ABS_C3_V1 13
-#define ABS_C3_V2 10
+#define ABS_C3_V1 8
+#define ABS_C3_V2 13
 
-#define ABS_C4_V1 12
-#define ABS_C4_V2 11
+#define ABS_C4_V1 9
+#define ABS_C4_V2 10
 
 #define DC_ABS_ISOLA 220
 #define DC_ABS_ISOLA_NULL 0

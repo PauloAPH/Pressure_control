@@ -7,8 +7,8 @@ void controle_ESC_circuito_1(int pwm_esc){
 }
 
 void controle_ESC_circuito_2(int pwm_esc){
-  analogWrite(ESC_C2_V1,pwm_esc);
-  analogWrite(ESC_C2_V2,pwm_esc);
+  digitalWrite(ESC_C2_V1,pwm_esc);
+  digitalWrite(ESC_C2_V2,pwm_esc);
 }
 
 void controle_roda_1(boolean enable_control, unsigned int p_1, unsigned int p_ref) {
