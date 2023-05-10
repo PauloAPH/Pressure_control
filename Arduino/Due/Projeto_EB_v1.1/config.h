@@ -6,9 +6,7 @@
  * Inserido define para o vetor cont, para facilitar a leitura
  */
 
-#include "TaskScheduler.h"
 #include "pwm_lib.h"
-#include "scheduler.h"
 #include "Sensor_DS2.h"
 
 

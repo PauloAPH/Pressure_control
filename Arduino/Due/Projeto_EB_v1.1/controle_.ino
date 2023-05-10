@@ -1,6 +1,5 @@
 #include "config.h"
 
-
 void controle_ESC_circuito_1(int pwm_esc){
   analogWrite(ESC_C1_V1,pwm_esc);
   analogWrite(ESC_C1_V2,pwm_esc);
