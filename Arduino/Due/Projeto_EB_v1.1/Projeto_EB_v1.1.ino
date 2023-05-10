@@ -4,8 +4,6 @@
    Author: Paulo A P Hayashida, Rennan, Rodrigo França
    Created on 18 de Março de 2022, 15:22
 */
-
-#include "scheduler.h"
 #include "config.h"
 
 /* Configurações do PWM de HW para a bomba */
@@ -74,7 +72,7 @@ void setup() {
   /* Inicia o PWM de HW */
   pwm_pump.start(PUMP_PWM_PERIOD_PIN_42, 5000);
   tc_setup();
-
+  pwm_pump.set_duty(DC_PUMP_OFF * PUMP_PWM_DUTY_TO_PERIOD_COEF);
 
 }
 
@@ -164,6 +162,7 @@ void loop() {
         Serial.println("Entre com o tempo");
         while (Serial.available() == 0);
         t_test = Serial.parseInt();
+        t_test = t_test * 100;
         if ((signed int)t_test != 0) {
           Serial.println("Teste em andamento");
           run_test = 1;

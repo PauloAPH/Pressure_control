@@ -56,7 +56,7 @@ while True:
         serialInst.write(x.encode())   
         x = 0     
     elif(packet.decode('utf') == "Imprimindo\r\n"):  
-        for i in range(0,int(t_test)):
+        for i in range(0,int(t_test)*100):
             data1[i] = int(serialInst.readline().decode('utf').rstrip('\n').rstrip('\r'))
             data2[i] = int(serialInst.readline().decode('utf').rstrip('\n').rstrip('\r'))
             data3[i] = int(serialInst.readline().decode('utf').rstrip('\n').rstrip('\r'))
@@ -66,7 +66,7 @@ while True:
 
         fig, ax = plt.subplots()
         ax.plot(t, data1,t, data2,t, data3,t, data4,t,data5)
-        ax.set_xlim(0, int(t_test)/100)
+        ax.set_xlim(0, int(t_test))
         #ax.set_ylim(-1, 1)
         ax.set_xlabel("Tempo em segundos")
         ax.set_ylabel("Pressão em bar")
