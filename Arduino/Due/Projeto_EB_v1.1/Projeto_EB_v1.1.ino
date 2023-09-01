@@ -1,14 +1,14 @@
-
 /*/*
    File:   Projeto_EB.ino
    Author: Paulo A P Hayashida, Rennan, Rodrigo França
    Created on 18 de Março de 2022, 15:22
 */
 #include "config.h"
+#include "variant.h"
+#include <due_can.h>
 
 /* Configurações do PWM de HW para a bomba */
 using namespace arduino_due::pwm_lib;
-
 pwm<pwm_pin::PWMH1_PA19> pwm_pump; /* Pino PA19 é mapeado ao pin 42 no DUE, canal 1 de PWM */
 
 #define SERIAL_TASK_US 1000000
@@ -30,7 +30,6 @@ bool controler_task = 0;
 long count_serial = 0;
 long count_controler = 0;
 
-
 int v_p_1[500];
 int v_p_2[500];
 int v_p_3[500];
@@ -51,6 +50,8 @@ void setup() {
 
   /* Abre a comunicação Serial */
   Serial.begin(9600);
+
+  /* Configuração dos pinos */
   pinMode(43, OUTPUT);
   pinMode(45, OUTPUT);
   pinMode(ESC_C1_V1, OUTPUT);
@@ -66,13 +67,22 @@ void setup() {
   pinMode(ABS_C4_V1, OUTPUT);
   pinMode(ABS_C4_V2, OUTPUT);
   pinMode(PUMP, OUTPUT);
-
+  //
   /* Configura resolução do ADC */
   analogReadResolution(8);
+  
   /* Inicia o PWM de HW */
   pwm_pump.start(PUMP_PWM_PERIOD_PIN_42, 5000);
   tc_setup();
   pwm_pump.set_duty(DC_PUMP_OFF * PUMP_PWM_DUTY_TO_PERIOD_COEF);
+
+
+  /* Configuração do CAN */
+  Can0.begin(CAN_BPS_1000K);
+  
+  //Only recive the ID 100
+  Can0.setRXFilter(0, 0x100, 0x7FF, false);
+  Can0.setCallback(0, gotFrameMB0);
 
 }
 
@@ -95,36 +105,39 @@ void tc_setup() {
 void TC8_Handler() {
 
   static uint32_t Count;
-  static int xxxx = 0;
-  static int xxx = 0;
+  static int ledBlinkController = 0;
+  static int ledBlinkSerial = 0;
 
   count_serial++;
   count_controler++;
 
   TC2->TC_CHANNEL[2].TC_SR;                               // Read and clear status register
+
   if (count_controler == CONTROLER_TASK_US){
-    if (xxxx == 1)
-    {
+    
+    if (ledBlinkController == 1) {
       digitalWrite(43, HIGH);
-      xxxx = 0;
+      ledBlinkController = 0;
     }
     else {
       digitalWrite(43, LOW);
-      xxxx = 1;
+      ledBlinkController = 1;
     }
     count_controler = 0;
-    if (state == 3) controler_task = 1;
+    
+    if (state == 3){
+      controler_task = 1;
+    }
   }
   
   if (count_serial == SERIAL_TASK_US){
-    if (xxx == 1)
-    {
+    if (ledBlinkSerial== 1) {
       digitalWrite(45, HIGH);
-      xxx = 0;
+      ledBlinkSerial = 0;
     }
     else {
       digitalWrite(45, LOW);
-      xxx = 1;
+      ledBlinkSerial = 1;
     }
     count_serial = 0;
     serial_task = 1;
@@ -229,8 +242,6 @@ void loop() {
 
       pwm_pump.set_duty(DC_PUMP_ON * PUMP_PWM_DUTY_TO_PERIOD_COEF);
       counter++;
-      Serial.println("counter");
-      Serial.println(counter, DEC);
     }
     else {
       pwm_pump.set_duty(DC_PUMP_OFF * PUMP_PWM_DUTY_TO_PERIOD_COEF);
