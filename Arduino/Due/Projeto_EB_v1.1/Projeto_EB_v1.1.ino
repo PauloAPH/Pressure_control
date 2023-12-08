@@ -3,9 +3,16 @@
    Author: Paulo A P Hayashida, Rennan, Rodrigo França
    Created on 18 de Março de 2022, 15:22
 */
+// Alocação dinamica dos vetores
+//Multiplas ref de pressão
+//Bug corrigido se tempo de teste > 5s
+
+
 #include "config.h"
 #include "variant.h"
 #include <due_can.h>
+#include <FIR.h>
+
 
 /* Configurações do PWM de HW para a bomba */
 using namespace arduino_due::pwm_lib;
@@ -24,24 +31,44 @@ float p_2 = 0;
 float p_3 = 0;
 float p_4 = 0;
 
+float p1MovAvr = 0;
+float p2MovAvr = 0;
+float p3MovAvr = 0;
+float p4MovAvr = 0;
+
 bool serial_task = 0;
 bool controler_task = 0;
 
 long count_serial = 0;
 long count_controler = 0;
 
-int v_p_1[500];
-int v_p_2[500];
-int v_p_3[500];
-int v_p_4[500];
+FIR<float, 8> filtro1;
+FIR<float, 8> filtro2;
+FIR<float, 8> filtro3;
+FIR<float, 8> filtro4;
+
+
+int *v_p_1 = NULL;
+int *v_p_2 = NULL;
+int *v_p_3 = NULL;
+int *v_p_4 = NULL;
+int *p_ref_1_print = NULL;
+int *p_ref_2_print = NULL;
+int *p_ref_3_print = NULL;
+int *p_ref_4_print = NULL;
 
 int sended = 0;
 int t_test = 300;
 int run_test = 0;
 int next_msg = 0;
 int imprime = 0;
-int p_ref_print = 0;
-float p_ref = 0;
+
+float p_ref_1 = 0;
+float p_ref_2 = 0;
+float p_ref_3 = 0;
+float p_ref_4 = 0;
+float erro = 0;
+
 int x = 0;
 int y = 0;
 int counter = 0;
@@ -70,20 +97,19 @@ void setup() {
   //
   /* Configura resolução do ADC */
   analogReadResolution(8);
+
+  float coef[8] = { 1., 1., 1., 1., 1., 1., 1., 1.};
+
+  // Set the coefficients
+  filtro1.setFilterCoeffs(coef);
+  filtro2.setFilterCoeffs(coef);
+  filtro3.setFilterCoeffs(coef);
+  filtro4.setFilterCoeffs(coef);
   
   /* Inicia o PWM de HW */
   pwm_pump.start(PUMP_PWM_PERIOD_PIN_42, 5000);
   tc_setup();
   pwm_pump.set_duty(DC_PUMP_OFF * PUMP_PWM_DUTY_TO_PERIOD_COEF);
-
-
-  /* Configuração do CAN */
-  Can0.begin(CAN_BPS_1000K);
-  
-  //Only recive the ID 100
-  Can0.setRXFilter(0, 0x100, 0x7FF, false);
-  Can0.setCallback(0, gotFrameMB0);
-
 }
 
 
@@ -165,8 +191,17 @@ void loop() {
       case 1:
         Serial.println("Entre com a pressao");
         while (Serial.available() == 0);
-        p_ref = Serial.parseInt();
-        if ((signed int)p_ref != 0) {
+        p_ref_1 = Serial.parseInt();
+        Serial.println("Entre com a pressao");
+        while (Serial.available() == 0);
+        p_ref_2 = Serial.parseInt();
+        Serial.println("Entre com a pressao");
+        while (Serial.available() == 0);
+        p_ref_3 = Serial.parseInt();
+        Serial.println("Entre com a pressao");
+        while (Serial.available() == 0);
+        p_ref_4 = Serial.parseInt();
+        if ((signed int)p_ref_1 != 0) {
           state = 2;
         }
         break;
@@ -176,6 +211,14 @@ void loop() {
         while (Serial.available() == 0);
         t_test = Serial.parseInt();
         t_test = t_test * 100;
+        v_p_1 = new int[t_test];
+        v_p_2 = new int[t_test]; 
+        v_p_3 = new int[t_test];
+        v_p_4 = new int[t_test];
+        p_ref_1_print = new int[t_test];
+        p_ref_2_print = new int[t_test];
+        p_ref_3_print = new int[t_test];
+        p_ref_4_print = new int[t_test];
         if ((signed int)t_test != 0) {
           Serial.println("Teste em andamento");
           run_test = 1;
@@ -194,8 +237,7 @@ void loop() {
           y = 0;
           x = 0;
           state = 5;
-          p_ref_print = (int)p_ref;
-          p_ref = -1;
+          p_ref_1 = -1;
         }
         break;
 
@@ -210,9 +252,23 @@ void loop() {
           delay(0.1);
           Serial.println(v_p_4[i], DEC);
           delay(0.1);
-          Serial.println(p_ref_print, DEC);
+          Serial.println(p_ref_1_print[i], DEC);
+          delay(0.1);
+          Serial.println(p_ref_2_print[i], DEC);
+          delay(0.1);
+          Serial.println(p_ref_3_print[i], DEC);
+          delay(0.1);
+          Serial.println(p_ref_4_print[i], DEC);
           delay(0.1);
         }
+        delete [] v_p_1;
+        delete [] v_p_2;
+        delete [] v_p_3;
+        delete [] v_p_4;
+        delete [] p_ref_1_print;
+        delete [] p_ref_2_print;
+        delete [] p_ref_3_print;
+        delete [] p_ref_4_print;
         t_test = 0;
         state = 0;
         break;
@@ -222,10 +278,14 @@ void loop() {
 
   if (controler_task == 1) {
     if (counter < t_test && run_test == 1) {
-      p_1 = 333 * ((analogRead(sensor_press_1) * (3.3 / (1280.0))) - 0.12);
-      p_2 = 333 * ((analogRead(sensor_press_2) * (3.3 / (1280.0))) - 0.12);
-      p_3 = 333 * ((analogRead(sensor_press_3) * (3.3 / (1280.0))) - 0.12);
-      p_4 = 333 * ((analogRead(sensor_press_4) * (3.3 / (1280.0))) - 0.12);
+      p1MovAvr = filtro1.processReading(analogRead(sensor_press_1));
+      p2MovAvr = filtro2.processReading(analogRead(sensor_press_2));
+      p3MovAvr = filtro3.processReading(analogRead(sensor_press_3));
+      p4MovAvr = filtro4.processReading(analogRead(sensor_press_4));
+      p_1 = 333 * ((p1MovAvr * (3.3 / (1280.0))) - 0.12);
+      p_2 = 333 * ((p2MovAvr * (3.3 / (1280.0))) - 0.12);
+      p_3 = 333 * ((p3MovAvr * (3.3 / (1280.0))) - 0.12);
+      p_4 = 333 * ((p4MovAvr * (3.3 / (1280.0))) - 0.12);
 
       v_p_1[counter] = (int)p_1;
       v_p_2[counter] = (int)p_2;
@@ -233,14 +293,47 @@ void loop() {
       v_p_4[counter] = (int)p_4;
 
       controle_ESC_circuito_1(DC_ESC_ON);
-      controle_ESC_circuito_2(HIGH);
+      controle_ESC_circuito_2(DC_ESC_ON);
 
-      controle_roda_1(1, p_1, p_ref);
-      controle_roda_2(1, p_2, p_ref);
-      controle_roda_3(1, p_3, p_ref);
-      controle_roda_4(1, p_4, p_ref);
+       /*if(counter < (int)t_test/2){
+        p_ref_1_print[counter] = 0;
+        p_ref_2_print[counter] = 0;
+        p_ref_3_print[counter] = 0;
+        p_ref_4_print[counter] = 0;
+        controle_roda_1(1, p_1, 0);
+        controle_roda_2(1, p_2, 0);
+        controle_roda_3(1, p_3, 0);
+        controle_roda_4(1, p_4, 0);
+      }
+      else{
+        p_ref_1_print[counter] = p_ref_1;
+        p_ref_2_print[counter] = p_ref_2;
+        p_ref_3_print[counter] = p_ref_3;
+        p_ref_4_print[counter] = p_ref_4;
+        controle_roda_1(1, p_1, p_ref_1);
+        controle_roda_2(1, p_2, p_ref_2);
+        controle_roda_3(1, p_3, p_ref_3);
+        controle_roda_4(1, p_4, p_ref_4);
+      }*/
+      p_ref_1_print[counter] = p_ref_1;
+      p_ref_2_print[counter] = p_ref_2;
+      p_ref_3_print[counter] = p_ref_3;
+      p_ref_4_print[counter] = p_ref_4;
+      erro = controle_roda_1(1, p_1, (float)p_ref_1);
+      controle_roda_2(1, p_2, (float)p_ref_2);
+      controle_roda_3(1, p_3, (float)p_ref_3);
+      controle_roda_4(1, p_4, (float)p_ref_4);
 
-      pwm_pump.set_duty(DC_PUMP_ON * PUMP_PWM_DUTY_TO_PERIOD_COEF);
+      
+      if(erro > 5){
+        pwm_pump.set_duty(DC_PUMP_ON * PUMP_PWM_DUTY_TO_PERIOD_COEF);
+      }
+      else if(erro > -5){
+        pwm_pump.set_duty(50 * PUMP_PWM_DUTY_TO_PERIOD_COEF);
+      }
+      else{
+        pwm_pump.set_duty(40 * PUMP_PWM_DUTY_TO_PERIOD_COEF);
+      }
       counter++;
     }
     else {
@@ -249,11 +342,14 @@ void loop() {
       controle_ESC_circuito_1(DC_ESC_OFF);
       controle_ESC_circuito_2(DC_ESC_OFF);
 
-      controle_roda_1(0, p_1, p_ref);
-      controle_roda_2(0, p_2, p_ref);
-      controle_roda_3(0, p_3, p_ref);
-      controle_roda_4(0, p_4, p_ref);
-
+      controle_roda_1(0, p_1, p_ref_1);
+      controle_roda_2(0, p_2, p_ref_2);
+      controle_roda_3(0, p_3, p_ref_3);
+      controle_roda_4(0, p_4, p_ref_4);
+      p1MovAvr = filtro1.processReading(analogRead(0));
+      p2MovAvr = filtro2.processReading(analogRead(0));
+      p3MovAvr = filtro3.processReading(analogRead(0));
+      p4MovAvr = filtro4.processReading(analogRead(0));
       if (counter >= t_test) {
         sended = 1;
         counter = 0;

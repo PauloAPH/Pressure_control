@@ -10,13 +10,15 @@ void controle_ESC_circuito_2(int pwm_esc){
   digitalWrite(ESC_C2_V2,pwm_esc);
 }
 
-void controle_roda_1(boolean enable_control, unsigned int p_1, unsigned int p_ref) {
+float controle_roda_1(boolean enable_control, float p_1, float p_ref) {
+  float erro = 0;
   if (enable_control == 1) {
-    if (p_1 > p_ref) {
-      analogWrite(ABS_C1_V1, 255);
-      analogWrite(ABS_C1_V2, 0);
+    erro = p_ref - p_1;
+    if (erro < -15) {
+      analogWrite(ABS_C1_V1, DC_ABS_ISOLA_FULL);
+      analogWrite(ABS_C1_V2, DC_ABS_ALIVIO);
     }
-    else if (p_1 > p_ref * 0.95 && p_1 < p_ref * 1.05) {
+    else if (erro < 5 && erro > - 5) {
       analogWrite(ABS_C1_V1, DC_ABS_ISOLA_FULL);
       analogWrite(ABS_C1_V2, DC_ABS_ALIVIO_NULL);
     }
@@ -29,15 +31,16 @@ void controle_roda_1(boolean enable_control, unsigned int p_1, unsigned int p_re
     analogWrite(ABS_C1_V1, DC_ABS_ISOLA_NULL);
     analogWrite(ABS_C1_V2, DC_ABS_ALIVIO_NULL);
   }
+  return erro;
 }
 
 void controle_roda_2(boolean enable_control, float p_2, float p_ref) {
   if (enable_control == 1) {
-    if (p_2 > p_ref) {
+    if (p_2 > p_ref* 1.02) {
       analogWrite(ABS_C2_V1, 255);
-      analogWrite(ABS_C2_V2, 0);
+      analogWrite(ABS_C2_V2, DC_ABS_ALIVIO);
     }
-    else if (p_2 > p_ref * 0.95 && p_2 < p_ref * 1.05) {
+    else if (p_2 > p_ref * 0.98 && p_2 < p_ref * 1.02) {
       analogWrite(ABS_C2_V1, DC_ABS_ISOLA_FULL);
       analogWrite(ABS_C2_V2, DC_ABS_ALIVIO_NULL);
     }
@@ -54,11 +57,11 @@ void controle_roda_2(boolean enable_control, float p_2, float p_ref) {
 
 void controle_roda_3(boolean enable_control, float p_3, float p_ref) {
   if (enable_control == 1) {
-    if (p_3 > p_ref) {
+    if (p_3 > p_ref* 1.02) {
       analogWrite(ABS_C3_V1, 255);
-      analogWrite(ABS_C3_V2, 0);
+      analogWrite(ABS_C3_V2, DC_ABS_ALIVIO);
     }
-    else if ( p_3 > (p_ref * 0.95) && p_3 < (p_ref * 1.05)) {
+    else if ( p_3 > (p_ref * 0.98) && p_3 < (p_ref * 1.02)) {
       analogWrite(ABS_C3_V1, DC_ABS_ISOLA_FULL);
       analogWrite(ABS_C3_V2, DC_ABS_ALIVIO_NULL);
     }
@@ -75,11 +78,11 @@ void controle_roda_3(boolean enable_control, float p_3, float p_ref) {
 
 void controle_roda_4(boolean enable_control, float p_4, float p_ref) {
   if (enable_control == 1) {
-    if (p_4 > p_ref) {
+    if (p_4 > p_ref* 1.02) {
       analogWrite(ABS_C4_V1, 255);
-      analogWrite(ABS_C4_V2, 0);
+      analogWrite(ABS_C4_V2, DC_ABS_ALIVIO);
     }
-    else if (p_4 > p_ref * 0.9 && p_4 < p_ref * 1.1) {
+    else if (p_4 > p_ref * 0.98 && p_4 < p_ref * 1.02) {
       analogWrite(ABS_C4_V1, DC_ABS_ISOLA_FULL);
       analogWrite(ABS_C4_V2, DC_ABS_ALIVIO_NULL);
     }

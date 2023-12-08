@@ -36,14 +36,14 @@
 #define DC_ABS_ISOLA 220
 #define DC_ABS_ISOLA_NULL 0
 #define DC_ABS_ISOLA_FULL 255
-#define DC_ABS_ALIVIO 255
+#define DC_ABS_ALIVIO 200
 #define DC_ABS_ALIVIO_NULL 0
 
 #define DC_ESC_HOLD 255
 #define DC_ESC_ON 255
 #define DC_ESC_OFF 0
 
-#define DC_PUMP_ON 100
+#define DC_PUMP_ON 70 // [0...100]
 #define DC_PUMP_OFF 0
 
 
