@@ -14,13 +14,13 @@ for p in ports:
 
 serialInst = serial.Serial()
 serialInst.baudrate = 9600
-serialInst.port = 'COM4'  # Linux: '/dev/ttyACM0'
+serialInst.port = 'COM4'
 serialInst.timeout = 5
 serialInst.open()
 
-OUTPUT_DIR   = "figuras"
-SAMPLE_MS    = 20
-PRESS_SCALE  = 0.1
+OUTPUT_DIR = "figuras"
+SAMPLE_MS  = 20
+OFFSETS    = [0.1204, 0.1773, 0.1295, 0.1231]
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -29,62 +29,62 @@ def timestamp():
     return time.strftime("%Y_%m_%d_%H%M%S")
 
 
-def recebe_identificacao(n_samples):
-    dc = np.zeros(n_samples, dtype=np.int32)
-    p1 = np.zeros(n_samples, dtype=np.float32)
-    p2 = np.zeros(n_samples, dtype=np.float32)
-    p3 = np.zeros(n_samples, dtype=np.float32)
-    p4 = np.zeros(n_samples, dtype=np.float32)
+def converte_pressao(raw, offset):
+    v = raw * (3.3 / 256.0)
+    return ((v / 5.0) - offset) / 0.003
 
-    print(f"  Recebendo {n_samples} amostras...")
+
+def recebe_identificacao(n_samples, prefixo):
+    dc = np.zeros(n_samples, dtype=np.int32)
+    p  = [np.zeros(n_samples, dtype=np.float32) for _ in range(4)]
+
+    print(f"  Recebendo {n_samples} amostras ({prefixo})...")
     for i in range(n_samples):
         dc[i] = int(serialInst.readline().decode('utf-8').strip())
-        p1[i] = float(serialInst.readline().decode('utf-8').strip())/100
-        p2[i] = float(serialInst.readline().decode('utf-8').strip())/100
-        p3[i] = float(serialInst.readline().decode('utf-8').strip())/100 
-        p4[i] = float(serialInst.readline().decode('utf-8').strip())/100 
-
-        p1[i] = ((p1[i]/5) - 0.1204)/0.003
-        p2[i] = ((p2[i]/5) - 0.1773)/0.003
-        p3[i] = ((p3[i]/5) - 0.1295)/0.003
-        p4[i] = ((p4[i]/5) - 0.1231)/0.003
+        for ch in range(4):
+            raw = int(serialInst.readline().decode('utf-8').strip())
+            p[ch][i] = converte_pressao(raw, OFFSETS[ch])
 
     t  = np.arange(n_samples) * (SAMPLE_MS / 1000.0)
     ts = timestamp()
 
-    mat_path = os.path.join(OUTPUT_DIR, f"idsist_{ts}.mat")
+    mat_path = os.path.join(OUTPUT_DIR, f"{prefixo}_{ts}.mat")
     scipy.io.savemat(mat_path, {
-        'dc': dc.astype(np.float64), 'p1': p1.astype(np.float64),
-        'p2': p2.astype(np.float64), 'p3': p3.astype(np.float64),
-        'p4': p4.astype(np.float64), 'time': t.astype(np.float64),
-        'Ts': np.float64(SAMPLE_MS / 1000.0), 'n_samples': np.float64(n_samples),
+        'dc':       dc.astype(np.float64),
+        'p1':       p[0].astype(np.float64),
+        'p2':       p[1].astype(np.float64),
+        'p3':       p[2].astype(np.float64),
+        'p4':       p[3].astype(np.float64),
+        'time':     t.astype(np.float64),
+        'Ts':       np.float64(SAMPLE_MS / 1000.0),
+        'n_samples': np.float64(n_samples),
     })
     print(f"  Dados salvos: {mat_path}")
 
+    titulo = "Identificacao Bomba" if prefixo == "idsist_bomba" else "Identificacao ABS"
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
     axes[0].step(t, dc, where='post', color='tab:blue', linewidth=1.2)
-    axes[0].set_ylabel("Duty Cycle da Bomba [%]")
-    axes[0].set_title(f"Identificacao de Sistemas – Bomba  ({ts})")
+    axes[0].set_ylabel("PWM (%)")
+    axes[0].set_title(f"{titulo}  ({ts})")
     axes[0].set_ylim(0, 105)
     axes[0].grid(True)
-    axes[1].plot(t, p1, label='Sensor 1')
-    axes[1].plot(t, p2, label='Sensor 2')
-    axes[1].plot(t, p3, label='Sensor 3')
-    axes[1].plot(t, p4, label='Sensor 4')
+    for ch in range(4):
+        axes[1].plot(t, p[ch], label=f'Sensor {ch+1}')
     axes[1].set_xlabel("Tempo [s]")
     axes[1].set_ylabel("Pressao [bar]")
     axes[1].legend()
     axes[1].grid(True)
     plt.tight_layout()
-    png_path = os.path.join(OUTPUT_DIR, f"idsist_{ts}.png")
+    png_path = os.path.join(OUTPUT_DIR, f"{prefixo}_{ts}.png")
     plt.savefig(png_path, dpi=150)
     plt.close(fig)
     print(f"  Grafico salvo: {png_path}")
 
 
-t_test     = 0
-start_time = None
-x          = 0
+t_test      = 0
+start_time  = None
+x           = 0
+modo_idsist = "idsist_bomba"
 
 while True:
     raw = serialInst.readline()
@@ -95,9 +95,22 @@ while True:
     except UnicodeDecodeError:
         continue
 
-    if line == "Iniciar teste? 1 = Teste1 (controle), 2 = Teste2 (identificacao)":
-        x = input(line)
+    if "Iniciar teste?" in line:
+        print(line)
+        x = input("Escolha (1/2/3): ")
+        if   x.strip() == '2': modo_idsist = "idsist_bomba"
+        elif x.strip() == '3': modo_idsist = "idsist_abs"
         serialInst.reset_input_buffer()
+        serialInst.write(x.encode())
+
+    elif line == "Entre com o PWM da bomba (%)":
+        serialInst.reset_input_buffer()
+        x = input(line + ": ")
+        serialInst.write(x.encode())
+
+    elif line == "Entre com o PWM das valvulas ABS (%)":
+        serialInst.reset_input_buffer()
+        x = input(line + ": ")
         serialInst.write(x.encode())
 
     elif line == "Entre com a pressao":
@@ -132,12 +145,13 @@ while True:
                 data[ch][i] = int(serialInst.readline().decode('utf-8').strip())
         ts = timestamp()
         fig, ax = plt.subplots(figsize=(12, 5))
-        labels = ['Sensor1','Sensor2','Sensor3','Sensor4','P_Ref1','P_Ref2','P_Ref3','P_Ref4']
+        labels = ['Sensor1','Sensor2','Sensor3','Sensor4',
+                  'P_Ref1', 'P_Ref2', 'P_Ref3', 'P_Ref4']
         for ch in range(8):
             ax.plot(t_axis, data[ch], label=labels[ch])
         ax.set_xlim(0, int(t_test))
         ax.set_xlabel("Tempo [s]")
-        ax.set_ylabel("Pressao [bar*10]")
+        ax.set_ylabel("Pressao [bar]")
         ax.legend()
         ax.grid(True)
         plt.tight_layout()
@@ -152,8 +166,8 @@ while True:
 
     elif line == "IDSIST_START":
         n_samples = int(serialInst.readline().decode('utf-8').strip())
-        print(f"  Inicio identificacao – {n_samples} amostras.")
-        recebe_identificacao(n_samples)
+        print(f"  Inicio transmissao – {n_samples} amostras.")
+        recebe_identificacao(n_samples, modo_idsist)
 
     elif line == "IDSIST_END":
         print("  Transmissao encerrada.\n")

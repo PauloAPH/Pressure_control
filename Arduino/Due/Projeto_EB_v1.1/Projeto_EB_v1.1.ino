@@ -1,10 +1,3 @@
-/*/*
-   File:   Projeto_EB.ino
-   Author: Paulo A P Hayashida, Rennan, Rodrigo França
-   Created on 18 de Março de 2022, 15:22
-   Revisao: Adicionado Teste2 - Identificacao de sistemas da bomba
-*/
-
 #include "config.h"
 #include "variant.h"
 #include <FIR.h>
@@ -12,17 +5,22 @@
 using namespace arduino_due::pwm_lib;
 pwm<pwm_pin::PWMH1_PA19> pwm_pump;
 
+#define SERIAL_TASK_US      1000000
+#define CONTROLER_TASK_US     10000
+#define IDSIST_DURATION_S       5
+#define IDSIST_SAMPLE_TICKS   200
+#define IDSIST_WAIT_TICKS   200000
+#define IDSIST_N_SAMPLES      250
+
 unsigned char state = 0;
 signed int pump_pwm_duty_cycle;
-
 extern pwm<pwm_pin::PWMH1_PA19> pwm_pump;
 
 float p_1 = 0, p_2 = 0, p_3 = 0, p_4 = 0;
 float p1MovAvr = 0, p2MovAvr = 0, p3MovAvr = 0, p4MovAvr = 0;
 
-bool serial_task    = 0;
-bool controler_task = 0;
-
+bool serial_task     = 0;
+bool controler_task  = 0;
 long count_serial    = 0;
 long count_controler = 0;
 
@@ -40,7 +38,6 @@ int   imprime  = 0;
 
 float p_ref_1 = 0, p_ref_2 = 0, p_ref_3 = 0, p_ref_4 = 0;
 float erro = 0;
-
 int x = 0, y = 0, counter = 0;
 
 static int idsist_dc[IDSIST_N_SAMPLES];
@@ -49,19 +46,21 @@ static int idsist_p2[IDSIST_N_SAMPLES];
 static int idsist_p3[IDSIST_N_SAMPLES];
 static int idsist_p4[IDSIST_N_SAMPLES];
 
-volatile long count_idsist_pwm    = 0;
 volatile long count_idsist_sample = 0;
 volatile long count_idsist_total  = 0;
+volatile long count_idsist_wait   = 0;
 
-volatile bool idsist_pwm_tick    = false;
 volatile bool idsist_sample_tick = false;
+volatile bool idsist_wait_done   = false;
 volatile bool idsist_done        = false;
 
-int     idsist_sample_idx = 0;
-int     idsist_dc_current = DC_IDSIST_MIN;
-static uint16_t prbs_state = 0x3FF;
+int idsist_sample_idx = 0;
+int idsist_pwm_param  = 0;
 
-int a;
+void tc_setup();
+void idsist_reset();
+void idsist_amostra();
+void idsist_envia_dados();
 
 void setup() {
   Serial.begin(9600);
@@ -93,8 +92,8 @@ void setup() {
 void tc_setup() {
   PMC->PMC_PCER1 |= PMC_PCER1_PID35;
   TC2->TC_CHANNEL[2].TC_CMR = TC_CMR_TCCLKS_TIMER_CLOCK1
-                              | TC_CMR_WAVE
-                              | TC_CMR_WAVSEL_UP_RC;
+                             | TC_CMR_WAVE
+                             | TC_CMR_WAVSEL_UP_RC;
   TC2->TC_CHANNEL[2].TC_RC  = 420;
   TC2->TC_CHANNEL[2].TC_IER = TC_IER_CPCS;
   NVIC_EnableIRQ(TC8_IRQn);
@@ -116,7 +115,6 @@ void TC8_Handler() {
     count_controler = 0;
     if (state == 3) controler_task = 1;
   }
-
   if (count_serial == SERIAL_TASK_US) {
     ledBlinkSerial ^= 1;
     digitalWrite(45, ledBlinkSerial ? HIGH : LOW);
@@ -124,10 +122,18 @@ void TC8_Handler() {
     serial_task  = 1;
   }
 
+  if (state == 21 || state == 31) {
+    count_idsist_wait++;
+    if (count_idsist_wait >= IDSIST_WAIT_TICKS) {
+      count_idsist_wait = 0;
+      idsist_wait_done  = true;
+    }
+  }
+
   if (state == 10) {
     count_idsist_sample++;
     count_idsist_total++;
-    if (count_idsist_sample >= IDSIST_SAMPLE_US) {
+    if (count_idsist_sample >= IDSIST_SAMPLE_TICKS) {
       count_idsist_sample = 0;
       idsist_sample_tick  = true;
     }
@@ -141,20 +147,15 @@ void TC8_Handler() {
 void loop() {
   if (serial_task == 1) {
     switch (state) {
+
       case 0:
-        Serial.println("Iniciar teste? 1 = Teste1 (controle), 2 = Teste2 (identificacao)");
+        Serial.println("Iniciar teste? 1 = Teste1 (controle), 2 = Teste2 (identificacao), 3 = Teste3 (ABS)");
         while (Serial.available() == 0);
         x = Serial.parseInt();
-        if (x == 1) {
-          state = 1;
-        }
-        else if (x == 2) {
-          state = 20;
-        }
-        else             {
-          state = 0;
-          run_test = 0;
-        }
+        if      (x == 1) state = 1;
+        else if (x == 2) state = 20;
+        else if (x == 3) state = 30;
+        else           { state = 0; run_test = 0; }
         break;
 
       case 1:
@@ -211,8 +212,8 @@ void loop() {
           Serial.println(p_ref_3_print[i], DEC); delay(0.1);
           Serial.println(p_ref_4_print[i], DEC); delay(0.1);
         }
-        delete [] v_p_1; delete [] v_p_2;
-        delete [] v_p_3; delete [] v_p_4;
+        delete [] v_p_1;         delete [] v_p_2;
+        delete [] v_p_3;         delete [] v_p_4;
         delete [] p_ref_1_print; delete [] p_ref_2_print;
         delete [] p_ref_3_print; delete [] p_ref_4_print;
         t_test = 0;
@@ -220,18 +221,45 @@ void loop() {
         break;
 
       case 20:
-        Serial.println("Identificacao iniciando (5s)...");
+        Serial.println("Entre com o PWM da bomba (%)");
+        while (Serial.available() == 0);
+        idsist_pwm_param = Serial.parseInt();
         idsist_reset();
         controle_ESC_circuito_1(DC_ESC_ON);
         controle_ESC_circuito_2(DC_ESC_ON);
-        pwm_pump.set_duty(idsist_dc_current * PUMP_PWM_DUTY_TO_PERIOD_COEF);
-        state = 10;
+        Serial.println("Aguardando 2s...");
+        state = 21;
+        break;
+
+      case 21:
+        break;
+
+      case 30:
+        Serial.println("Entre com o PWM das valvulas ABS (%)");
+        while (Serial.available() == 0);
+        idsist_pwm_param = Serial.parseInt();
+        idsist_reset();
+        controle_ESC_circuito_1(DC_ESC_ON);
+        controle_ESC_circuito_2(DC_ESC_ON);
+        controle_ABS_isola_1(idsist_pwm_param);
+        controle_ABS_isola_2(idsist_pwm_param);
+        controle_ABS_isola_3(idsist_pwm_param);
+        controle_ABS_isola_4(idsist_pwm_param);
+        Serial.println("Aguardando 2s...");
+        state = 31;
+        break;
+
+      case 31:
         break;
 
       case 11:
         pwm_pump.set_duty(DC_PUMP_OFF * PUMP_PWM_DUTY_TO_PERIOD_COEF);
         controle_ESC_circuito_1(DC_ESC_OFF);
         controle_ESC_circuito_2(DC_ESC_OFF);
+        controle_ABS_isola_1(DC_ABS_ISOLA_NULL);
+        controle_ABS_isola_2(DC_ABS_ISOLA_NULL);
+        controle_ABS_isola_3(DC_ABS_ISOLA_NULL);
+        controle_ABS_isola_4(DC_ABS_ISOLA_NULL);
         state = 12;
         break;
 
@@ -248,6 +276,12 @@ void loop() {
         break;
     }
     serial_task = 0;
+  }
+
+  if (idsist_wait_done) {
+    idsist_wait_done = false;
+    pwm_pump.set_duty(idsist_pwm_param * PUMP_PWM_DUTY_TO_PERIOD_COEF);
+    state = 10;
   }
 
   if (controler_task == 1) {
@@ -309,31 +343,19 @@ void loop() {
     controler_task = 0;
   }
 
-  if (state == 10 || (state == 11 && idsist_sample_tick)) {
-    if (idsist_sample_tick) {
-
-      idsist_sample_tick = false;
-      idsist_atualiza_pwm();
-      idsist_amostra();
-    }
+  if (state == 10 && idsist_sample_tick) {
+    idsist_sample_tick = false;
+    idsist_amostra();
   }
-}
-
-uint8_t prbs_next() {
-  uint8_t bit = ((prbs_state >> 9) ^ (prbs_state >> 6)) & 1u;
-  prbs_state  = ((prbs_state << 1) | bit) & 0x3FF;
-  return bit;
 }
 
 void idsist_reset() {
   idsist_sample_idx   = 0;
-  idsist_dc_current   = DC_IDSIST_MIN;
-  prbs_state          = 0x3FF;
-  count_idsist_pwm    = 0;
   count_idsist_sample = 0;
   count_idsist_total  = 0;
-  idsist_pwm_tick     = false;
+  count_idsist_wait   = 0;
   idsist_sample_tick  = false;
+  idsist_wait_done    = false;
   idsist_done         = false;
   memset(idsist_dc, 0, sizeof(idsist_dc));
   memset(idsist_p1, 0, sizeof(idsist_p1));
@@ -342,27 +364,13 @@ void idsist_reset() {
   memset(idsist_p4, 0, sizeof(idsist_p4));
 }
 
-void idsist_atualiza_pwm() {
-  idsist_dc_current = prbs_next() ? DC_IDSIST_MAX : DC_IDSIST_MIN;
-  pwm_pump.set_duty(idsist_dc_current * PUMP_PWM_DUTY_TO_PERIOD_COEF);
-}
-
 void idsist_amostra() {
   if (idsist_sample_idx >= IDSIST_N_SAMPLES) return;
-  int raw1 = analogRead(sensor_press_1);
-  int raw2 = analogRead(sensor_press_2);
-  int raw3 = analogRead(sensor_press_3);
-  int raw4 = analogRead(sensor_press_4);
-  idsist_dc[idsist_sample_idx] = idsist_dc_current;
-  //idsist_p1[idsist_sample_idx] = (int)(333.0f * ((raw1 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
-  //idsist_p2[idsist_sample_idx] = (int)(333.0f * ((raw2 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
-  //idsist_p3[idsist_sample_idx] = (int)(333.0f * ((raw3 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
-  //idsist_p4[idsist_sample_idx] = (int)(333.0f * ((raw4 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
-
-  idsist_p1[idsist_sample_idx] = raw1 * 0.014  * 100;
-  idsist_p2[idsist_sample_idx] = raw2 * 0.014  * 100;
-  idsist_p3[idsist_sample_idx] = raw3 * 0.014  * 100;
-  idsist_p4[idsist_sample_idx] = raw4 * 0.014  * 100;
+  idsist_dc[idsist_sample_idx] = idsist_pwm_param;
+  idsist_p1[idsist_sample_idx] = analogRead(sensor_press_1);
+  idsist_p2[idsist_sample_idx] = analogRead(sensor_press_2);
+  idsist_p3[idsist_sample_idx] = analogRead(sensor_press_3);
+  idsist_p4[idsist_sample_idx] = analogRead(sensor_press_4);
   idsist_sample_idx++;
 }
 
