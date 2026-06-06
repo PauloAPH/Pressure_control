@@ -51,18 +51,22 @@
 #define PUMP_PWM_PERIOD_PIN_42           5000                         /* 20.000 kHz = 50 usecs em centenas de usecs (1e-8 secs) */
 #define PUMP_PWM_DUTY_TO_PERIOD_COEF     (PUMP_PWM_PERIOD_PIN_42/100) /* Coeficiente para converter um Duty Cycle de [0..100] para o período equivalente */
 
-#define SERIAL_TASK_US    1000000
-#define CONTROLER_TASK_US   10000
+#define SERIAL_TASK_US    100000
+#define CONTROLER_TASK_US   1000
 
 #define IDSIST_DURATION_S     5
-#define IDSIST_PWM_STEP_US    5000
-#define IDSIST_SAMPLE_US     25000
+#define IDSIST_SAMPLE_US     2000
 #define IDSIST_N_SAMPLES  (IDSIST_DURATION_S * 1000000 / IDSIST_SAMPLE_US)
 
-#define DC_IDSIST_MIN  20
+#define DC_IDSIST_MIN  10
 #define DC_IDSIST_MAX  90
-#define DC_ARMAX_MIN   20
-#define DC_ARMAX_MAX   90
+
+#define SensorP1 44
+#define SensorP2 254
+#define SensorP3 64
+#define SensorP4 64
+
+
 
 void tc_setup();
 void idsist_reset();

@@ -13,8 +13,8 @@
 float converte_DS2(int adc_value);
 
 // UA = UV(0.003*p+0.12)
-//[(UA/UV)-0.12]/0.003
-//333*[(UA/UV)-0.12 ]
+//[(UA/UV)-0.12]/0.003 = p
+//333*[(UA/UV)-0.12 ] = p
 //UA = byte_valeu*(5V/256))
 //UV =~ 5V
 //333*[(byte_value/256)-0.12 ]

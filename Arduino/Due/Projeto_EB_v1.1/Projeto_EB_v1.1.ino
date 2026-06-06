@@ -7,7 +7,6 @@
 
 #include "config.h"
 #include "variant.h"
-#include <due_can.h>
 #include <FIR.h>
 
 using namespace arduino_due::pwm_lib;
@@ -62,10 +61,11 @@ int     idsist_sample_idx = 0;
 int     idsist_dc_current = DC_IDSIST_MIN;
 static uint16_t prbs_state = 0x3FF;
 
+int a;
 
 void setup() {
   Serial.begin(9600);
-
+  Serial.println("Connected!");
   pinMode(43, OUTPUT);
   pinMode(45, OUTPUT);
   pinMode(ESC_C1_V1, OUTPUT);  pinMode(ESC_C1_V2, OUTPUT);
@@ -87,14 +87,15 @@ void setup() {
   pwm_pump.start(PUMP_PWM_PERIOD_PIN_42, 5000);
   tc_setup();
   pwm_pump.set_duty(DC_PUMP_OFF * PUMP_PWM_DUTY_TO_PERIOD_COEF);
+  digitalWrite(43, HIGH);
 }
 
 void tc_setup() {
   PMC->PMC_PCER1 |= PMC_PCER1_PID35;
   TC2->TC_CHANNEL[2].TC_CMR = TC_CMR_TCCLKS_TIMER_CLOCK1
-                             | TC_CMR_WAVE
-                             | TC_CMR_WAVSEL_UP_RC;
-  TC2->TC_CHANNEL[2].TC_RC  = 42;
+                              | TC_CMR_WAVE
+                              | TC_CMR_WAVSEL_UP_RC;
+  TC2->TC_CHANNEL[2].TC_RC  = 420;
   TC2->TC_CHANNEL[2].TC_IER = TC_IER_CPCS;
   NVIC_EnableIRQ(TC8_IRQn);
   TC2->TC_CHANNEL[2].TC_CCR = TC_CCR_SWTRG | TC_CCR_CLKEN;
@@ -124,19 +125,13 @@ void TC8_Handler() {
   }
 
   if (state == 10) {
-    count_idsist_pwm++;
     count_idsist_sample++;
     count_idsist_total++;
-
-    if (count_idsist_pwm >= IDSIST_PWM_STEP_US) {
-      count_idsist_pwm = 0;
-      idsist_pwm_tick  = true;
-    }
     if (count_idsist_sample >= IDSIST_SAMPLE_US) {
       count_idsist_sample = 0;
       idsist_sample_tick  = true;
     }
-    if (count_idsist_total >= (long)IDSIST_DURATION_S * 1000000L) {
+    if (count_idsist_total >= (long)IDSIST_DURATION_S * 100000L) {
       idsist_done = true;
       state = 11;
     }
@@ -144,18 +139,22 @@ void TC8_Handler() {
 }
 
 void loop() {
-
   if (serial_task == 1) {
     switch (state) {
-
       case 0:
-        Serial.println("Iniciar teste?");
-        Serial.println("1 = Teste1 (controle), 2 = Teste2 (identificacao)");
+        Serial.println("Iniciar teste? 1 = Teste1 (controle), 2 = Teste2 (identificacao)");
         while (Serial.available() == 0);
         x = Serial.parseInt();
-        if      (x == 1) { state = 1; }
-        else if (x == 2) { state = 20; }
-        else             { state = 0; run_test = 0; }
+        if (x == 1) {
+          state = 1;
+        }
+        else if (x == 2) {
+          state = 20;
+        }
+        else             {
+          state = 0;
+          run_test = 0;
+        }
         break;
 
       case 1:
@@ -311,12 +310,10 @@ void loop() {
   }
 
   if (state == 10 || (state == 11 && idsist_sample_tick)) {
-    if (idsist_pwm_tick) {
-      idsist_pwm_tick = false;
-      idsist_atualiza_pwm();
-    }
     if (idsist_sample_tick) {
+
       idsist_sample_tick = false;
+      idsist_atualiza_pwm();
       idsist_amostra();
     }
   }
@@ -357,10 +354,15 @@ void idsist_amostra() {
   int raw3 = analogRead(sensor_press_3);
   int raw4 = analogRead(sensor_press_4);
   idsist_dc[idsist_sample_idx] = idsist_dc_current;
-  idsist_p1[idsist_sample_idx] = (int)(333.0f * ((raw1 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
-  idsist_p2[idsist_sample_idx] = (int)(333.0f * ((raw2 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
-  idsist_p3[idsist_sample_idx] = (int)(333.0f * ((raw3 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
-  idsist_p4[idsist_sample_idx] = (int)(333.0f * ((raw4 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
+  //idsist_p1[idsist_sample_idx] = (int)(333.0f * ((raw1 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
+  //idsist_p2[idsist_sample_idx] = (int)(333.0f * ((raw2 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
+  //idsist_p3[idsist_sample_idx] = (int)(333.0f * ((raw3 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
+  //idsist_p4[idsist_sample_idx] = (int)(333.0f * ((raw4 * (3.3f / 1280.0f)) - 0.12f) * 10.0f);
+
+  idsist_p1[idsist_sample_idx] = raw1 * 0.014  * 100;
+  idsist_p2[idsist_sample_idx] = raw2 * 0.014  * 100;
+  idsist_p3[idsist_sample_idx] = raw3 * 0.014  * 100;
+  idsist_p4[idsist_sample_idx] = raw4 * 0.014  * 100;
   idsist_sample_idx++;
 }
 

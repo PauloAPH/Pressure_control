@@ -14,12 +14,12 @@ for p in ports:
 
 serialInst = serial.Serial()
 serialInst.baudrate = 9600
-serialInst.port = 'COM9'  # Linux: '/dev/ttyACM0'
+serialInst.port = 'COM4'  # Linux: '/dev/ttyACM0'
 serialInst.timeout = 5
 serialInst.open()
 
 OUTPUT_DIR   = "figuras"
-SAMPLE_MS    = 25
+SAMPLE_MS    = 20
 PRESS_SCALE  = 0.1
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -39,10 +39,15 @@ def recebe_identificacao(n_samples):
     print(f"  Recebendo {n_samples} amostras...")
     for i in range(n_samples):
         dc[i] = int(serialInst.readline().decode('utf-8').strip())
-        p1[i] = int(serialInst.readline().decode('utf-8').strip()) * PRESS_SCALE
-        p2[i] = int(serialInst.readline().decode('utf-8').strip()) * PRESS_SCALE
-        p3[i] = int(serialInst.readline().decode('utf-8').strip()) * PRESS_SCALE
-        p4[i] = int(serialInst.readline().decode('utf-8').strip()) * PRESS_SCALE
+        p1[i] = float(serialInst.readline().decode('utf-8').strip())/100
+        p2[i] = float(serialInst.readline().decode('utf-8').strip())/100
+        p3[i] = float(serialInst.readline().decode('utf-8').strip())/100 
+        p4[i] = float(serialInst.readline().decode('utf-8').strip())/100 
+
+        p1[i] = ((p1[i]/5) - 0.1204)/0.003
+        p2[i] = ((p2[i]/5) - 0.1773)/0.003
+        p3[i] = ((p3[i]/5) - 0.1295)/0.003
+        p4[i] = ((p4[i]/5) - 0.1231)/0.003
 
     t  = np.arange(n_samples) * (SAMPLE_MS / 1000.0)
     ts = timestamp()
@@ -90,14 +95,10 @@ while True:
     except UnicodeDecodeError:
         continue
 
-    if line == "Iniciar teste?":
-        print(line)
-        x = input("1=Teste1 (controle), 2=Teste2 (identificacao): ")
+    if line == "Iniciar teste? 1 = Teste1 (controle), 2 = Teste2 (identificacao)":
+        x = input(line)
         serialInst.reset_input_buffer()
         serialInst.write(x.encode())
-
-    elif line == "1 = Teste1 (controle), 2 = Teste2 (identificacao)":
-        print(line)
 
     elif line == "Entre com a pressao":
         serialInst.reset_input_buffer()
